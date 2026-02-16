@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+    <class>PanelFeaturePrefs</class>
+    <widget class="QWidget" name="PanelFeaturePrefs">
+        <layout class="QFormLayout" name="formLayout">
+            <item row="0" column="0">
+                <widget class="QLabel" name="labelMaxLength">
+                    <property name="text">
+                        <string>Max Length (mm)</string>
+                    </property>
+                </widget>
+            </item>
+            <item row="0" column="1">
+                <widget class="QDoubleSpinBox" name="sbMaxLength">
+                    <property name="maximum">
+                        <double>100000.000000000000000</double>
+                    </property>
+                    <property name="value">
+                        <double>3000.000000000000000</double>
+                    </property>
+                    <property name="decimals">
+                        <number>1</number>
+                    </property>
+                </widget>
+            </item>
+
+            <item row="1" column="0">
+                <widget class="QLabel" name="labelMaxWidth">
+                    <property name="text">
+                        <string>Max Width (mm)</string>
+                    </property>
+                </widget>
+            </item>
+            <item row="1" column="1">
+                <widget class="QDoubleSpinBox" name="sbMaxWidth">
+                    <property name="maximum">
+                        <double>100000.000000000000000</double>
+                    </property>
+                    <property name="value">
+                        <double>3000.000000000000000</double>
+                    </property>
+                    <property name="decimals">
+                        <number>1</number>
+                    </property>
+                </widget>
+            </item>
+        </layout>
+    </widget>
+    <resources/>
+    <connections/>
+</ui>
