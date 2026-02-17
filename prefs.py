@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import FreeCAD as App
 
-PARAM_PATH = "User parameter:BaseApp/Preferences/Mod/PanelFeatureAddon"
+PARAM_PATH = "User parameter:BaseApp/Preferences/Mod/PanelFeature"
 
 def param():
     return App.ParamGet(PARAM_PATH)

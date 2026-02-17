@@ -1,51 +1,83 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<ui version="4.0">
-    <class>PanelFeaturePrefs</class>
-    <widget class="QWidget" name="PanelFeaturePrefs">
-        <layout class="QFormLayout" name="formLayout">
-            <item row="0" column="0">
-                <widget class="QLabel" name="labelMaxLength">
-                    <property name="text">
-                        <string>Max Length (mm)</string>
-                    </property>
-                </widget>
-            </item>
-            <item row="0" column="1">
-                <widget class="QDoubleSpinBox" name="sbMaxLength">
-                    <property name="maximum">
-                        <double>100000.000000000000000</double>
-                    </property>
-                    <property name="value">
-                        <double>3000.000000000000000</double>
-                    </property>
-                    <property name="decimals">
-                        <number>1</number>
-                    </property>
-                </widget>
-            </item>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
+    <name>PanelFeature</name>
+    <description>
+        Creates a parametric panel Feature with per-face colors and optional textures (view-only),
+        including ABS edge banding visualization flags.
+    </description>
 
-            <item row="1" column="0">
-                <widget class="QLabel" name="labelMaxWidth">
-                    <property name="text">
-                        <string>Max Width (mm)</string>
-                    </property>
-                </widget>
-            </item>
-            <item row="1" column="1">
-                <widget class="QDoubleSpinBox" name="sbMaxWidth">
-                    <property name="maximum">
-                        <double>100000.000000000000000</double>
-                    </property>
-                    <property name="value">
-                        <double>3000.000000000000000</double>
-                    </property>
-                    <property name="decimals">
-                        <number>1</number>
-                    </property>
-                </widget>
-            </item>
-        </layout>
-    </widget>
-    <resources/>
-    <connections/>
-</ui>
+    <version>1.0.0</version>
+    <date>2026-02-16</date>
+
+    <maintainer email="eugen.scobich@gmail.com">Your Name</maintainer>
+    <license file="LICENSE">LGPL-2.1-or-later</license>
+
+    <url type="repository" branch="main">https://github.com/eugenscobich/PanelFeature</url>
+    <url type="bugtracker">https://github.com/eugenscobich/PanelFeature/issues</url>
+    <url type="readme">https://github.com/eugenscobich/PanelFeature/blob/main/README.md</url>
+
+    <icon>Resources/icons/panel_feature.svg</icon>
+
+    <content>
+        <workbench>
+            <name>PanelFeature</name>
+            <classname>PanelFeatureWorkbench</classname>
+            <subdirectory>./</subdirectory>
+        </workbench>
+    </content>
+
+    <dependencies>
+        <freecad>1.0</freecad>
+    </dependencies>
+
+    <ui version="4.0">
+        <class>PanelFeaturePrefs</class>
+        <widget class="QWidget" name="PanelFeaturePrefs">
+            <layout class="QFormLayout" name="formLayout">
+                <item row="0" column="0">
+                    <widget class="QLabel" name="labelMaxLength">
+                        <property name="text">
+                            <string>Max Length (mm)</string>
+                        </property>
+                    </widget>
+                </item>
+                <item row="0" column="1">
+                    <widget class="QDoubleSpinBox" name="sbMaxLength">
+                        <property name="maximum">
+                            <double>100000.000000000000000</double>
+                        </property>
+                        <property name="value">
+                            <double>3000.000000000000000</double>
+                        </property>
+                        <property name="decimals">
+                            <number>1</number>
+                        </property>
+                    </widget>
+                </item>
+
+                <item row="1" column="0">
+                    <widget class="QLabel" name="labelMaxWidth">
+                        <property name="text">
+                            <string>Max Width (mm)</string>
+                        </property>
+                    </widget>
+                </item>
+                <item row="1" column="1">
+                    <widget class="QDoubleSpinBox" name="sbMaxWidth">
+                        <property name="maximum">
+                            <double>100000.000000000000000</double>
+                        </property>
+                        <property name="value">
+                            <double>3000.000000000000000</double>
+                        </property>
+                        <property name="decimals">
+                            <number>1</number>
+                        </property>
+                    </widget>
+                </item>
+            </layout>
+        </widget>
+        <resources/>
+        <connections/>
+    </ui>
+</package>

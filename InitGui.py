@@ -10,7 +10,7 @@ class CreatePanelFeatureCommand:
 
     def GetResources(self):
         return {
-            "Pixmap": App.getUserAppDataDir() + "Mod/PanelFeatureAddon/Resources/icons/create_panel_feature.svg",
+            "Pixmap": App.getResourceDir() + "Mod/PanelFeature/Resources/icons/create_panel_feature.svg",
             "MenuText": "Create Panel Feature",
             "ToolTip": "Create a parametric panel feature with per-face colors/textures and ABS visualization.",
         }
@@ -24,13 +24,14 @@ class CreatePanelFeatureCommand:
 
 class PanelFeatureWorkbench(Gui.Workbench):
     MenuText = "Panel Feature"
-    ToolTip = "Panel Feature addon"
-    Icon = App.getUserAppDataDir() + "Mod/PanelFeatureAddon/Resources/icons/panel_feature.svg"
+    ToolTip = "Panel Feature"
+    Icon = App.getResourceDir() + "Mod/PanelFeature/Resources/icons/panel_feature.svg"
 
     def Initialize(self):
         Gui.addCommand("Create_Panel_Feature", CreatePanelFeatureCommand())
         self.appendToolbar("Panel Feature", ["Create_Panel_Feature"])
         self.appendMenu("Panel Feature", ["Create_Panel_Feature"])
+        Log ('Loading Panel_Feature module... done\n')
 
     def Activated(self):
         pass
