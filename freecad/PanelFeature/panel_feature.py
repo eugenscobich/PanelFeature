@@ -1,87 +1,14 @@
-# -*- coding: utf-8 -*-
 import os
 import FreeCAD as App
+import FreeCADGui as Gui
 import Part
-
-try:
-    import FreeCADGui as Gui
-    from pivy import coin
-except Exception:
-    Gui = None
-    coin = None
-
-
-def _clamp01(x: float) -> float:
-    return 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
-
-
-def _to_rgb3(color_prop):
-    try:
-        r, g, b = color_prop[0], color_prop[1], color_prop[2]
-        return (_clamp01(float(r)), _clamp01(float(g)), _clamp01(float(b)))
-    except Exception:
-        return (0.8, 0.8, 0.8)
-
-
-def _safe_path(p):
-    if not p:
-        return ""
-    try:
-        p = str(p)
-    except Exception:
-        return ""
-    return p.strip()
-
-
-def _file_exists(p):
-    p = _safe_path(p)
-    return bool(p) and os.path.isfile(p)
-
-
-def _make_face_sep(face_coords, rgb, texture_path=""):
-    sep = coin.SoSeparator()
-
-    mat = coin.SoMaterial()
-    mat.diffuseColor.setValue(rgb[0], rgb[1], rgb[2])
-    sep.addChild(mat)
-
-    if _file_exists(texture_path):
-        tex = coin.SoTexture2()
-        tex.filename = _safe_path(texture_path)
-        sep.addChild(tex)
-
-        tcoord = coin.SoTextureCoordinate2()
-        tcoord.point.setValues(
-            0, 4,
-            [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
-        )
-        sep.addChild(tcoord)
-
-    coords = coin.SoCoordinate3()
-    coords.point.setValues(0, 4, face_coords)
-    sep.addChild(coords)
-
-    fs = coin.SoFaceSet()
-    fs.numVertices.setValue(4)
-    sep.addChild(fs)
-
-    return sep
-
 
 class PanelFeatureProxy:
     def __init__(self, obj):
         obj.Proxy = self
-        self._busy = False
         self._init_properties(obj)
 
     def _init_properties(self, obj):
-        obj.addProperty("App::PropertyLength", "Length", "Dimensions", "Panel length (X).")
-        obj.addProperty("App::PropertyLength", "Width", "Dimensions", "Panel width (Y).")
-        obj.addProperty("App::PropertyLength", "Thickness", "Dimensions", "Panel thickness (Z).")
-        obj.Length = App.Units.Quantity("200 mm")
-        obj.Width = App.Units.Quantity("400 mm")
-        obj.Thickness = App.Units.Quantity("18 mm")
-
         obj.addProperty("App::PropertyColor", "BaseColor", "Appearance", "Top face color (Length x Width).")
         obj.addProperty("App::PropertyBool", "ColorForBothSides", "Appearance", "If true, bottom face uses Color/Texture too.")
         obj.addProperty("App::PropertyColor", "Color", "Appearance", "Color used for 'colored' faces (or replaced by Texture).")
@@ -106,6 +33,13 @@ class PanelFeatureProxy:
         obj.ABSTexture = ""
         obj.MissingABSColor = (1.0, 0.0, 0.0)  # red
 
+        obj.addProperty("App::PropertyLength", "Length", "Dimensions", "Panel length (X).")
+        obj.addProperty("App::PropertyLength", "Width", "Dimensions", "Panel width (Y).")
+        obj.addProperty("App::PropertyLength", "Thickness", "Dimensions", "Panel thickness (Z).")
+        obj.Length = App.Units.Quantity("200 mm")
+        obj.Width = App.Units.Quantity("400 mm")
+        obj.Thickness = App.Units.Quantity("18 mm")
+
     def execute(self, obj):
         L = float(obj.Length)
         W = float(obj.Width)
@@ -114,12 +48,10 @@ class PanelFeatureProxy:
         if L <= 0 or W <= 0 or T <= 0:
             obj.Shape = Part.Shape()
             return
-
+        App.Console.PrintMessage(f"Making a box of dimension {L}x{W}x{T}\n")
         obj.Shape = Part.makeBox(L, W, T)
 
     def onChanged(self, obj, prop):
-        if self._busy:
-            return
         try:
             if hasattr(obj, "State") and ("Restore" in obj.State):
                 return
@@ -134,110 +66,95 @@ class PanelFeatureProxy:
         }
 
         if prop in dims:
-            self._busy = True
             try:
                 obj.touch()
                 if obj.Document:
                     obj.Document.recompute()
-            finally:
-                self._busy = False
-        elif prop in visuals:
-            try:
-                vp = obj.ViewObject.Proxy
-                if vp and hasattr(vp, "updateVisual"):
-                    vp.updateVisual(obj.ViewObject)
             except Exception:
                 pass
 
 
+def _rgb(c):
+    """FreeCAD colors are often (r,g,b) or (r,g,b,a). Return (r,g,b)."""
+    return (float(c[0]), float(c[1]), float(c[2]))
+
+def apply_panel_face_colors(obj):
+    """
+    Colors faces based on obj.BaseColor / obj.Color / obj.MissingABSColor and ABS flags.
+    Uses face center-of-mass to map faces to Top/Bottom/L1/L2/W1/W2.
+    """
+    if not hasattr(obj, "ViewObject") or obj.ViewObject is None:
+        return
+    sh = getattr(obj, "Shape", None)
+    if sh is None or sh.isNull():
+        return
+    if len(sh.Faces) == 0:
+        return
+
+    # Pick your palette
+    base = _rgb(obj.BaseColor)                 # top (and optionally bottom)
+    generic = _rgb(obj.Color)                  # used for "ABS present" sides (example)
+    missing = _rgb(obj.MissingABSColor)        # used for "ABS missing" sides
+
+    # Build a per-face color list in Face order
+    face_colors = [generic] * len(sh.Faces)
+
+    # Collect face centers for classification
+    centers = []
+    for i, f in enumerate(sh.Faces):
+        c = f.CenterOfMass
+        centers.append((i, c.x, c.y, c.z))
+
+    # Identify faces by extreme center coordinates
+    top_i    = max(centers, key=lambda t: t[3])[0]
+    bottom_i = min(centers, key=lambda t: t[3])[0]
+    x_min_i  = min(centers, key=lambda t: t[1])[0]
+    x_max_i  = max(centers, key=lambda t: t[1])[0]
+    y_min_i  = min(centers, key=lambda t: t[2])[0]
+    y_max_i  = max(centers, key=lambda t: t[2])[0]
+
+    # Top / bottom
+    face_colors[top_i] = base
+    if bool(obj.ColorForBothSides):
+        face_colors[bottom_i] = base
+
+    # Side ABS logic (example mapping):
+    # - X sides correspond to "Length x Thickness": ABSL1 / ABSL2
+    # - Y sides correspond to "Width  x Thickness": ABSW1 / ABSW2
+    face_colors[x_min_i] = generic if bool(obj.ABSL1) else missing
+    face_colors[x_max_i] = generic if bool(obj.ABSL2) else missing
+    face_colors[y_min_i] = generic if bool(obj.ABSW1) else missing
+    face_colors[y_max_i] = generic if bool(obj.ABSW2) else missing
+
+    # Apply to the view provider
+    vobj = obj.ViewObject
+    vobj.DiffuseColor = face_colors
+
+    # Workaround: in some FreeCAD versions, FeaturePython may not refresh DiffuseColor
+    # until it is re-assigned to itself. :contentReference[oaicite:1]{index=1}
+    vobj.DiffuseColor = vobj.DiffuseColor
+
 class ViewProviderPanelFeature:
     def __init__(self, vobj):
         vobj.Proxy = self
-        self.root = None
 
     def attach(self, vobj):
-        if coin is None:
-            return
-        self.root = coin.SoSeparator()
-        vobj.RootNode.addChild(self.root)
-        self.updateVisual(vobj)
+        pass
 
     def updateData(self, obj, prop):
-        try:
-            self.updateVisual(obj.ViewObject)
-        except Exception:
-            pass
+        App.Console.PrintMessage("updateData\n")
+        if prop in (
+                "Shape",
+                "BaseColor", "ColorForBothSides", "Color",
+                "ABSL1", "ABSL2", "ABSW1", "ABSW2", "MissingABSColor",
+        ):
+            try:
+                apply_panel_face_colors(obj)
+            except Exception as e:
+                App.Console.PrintWarning(f"apply_panel_face_colors failed: {e}\n")
 
     def onChanged(self, vobj, prop):
-        if prop in ("Visibility",):
-            return
-        self.updateVisual(vobj)
-
-    def _quads(self, L, W, T):
-        top = [(0, 0, T), (L, 0, T), (L, W, T), (0, W, T)]
-        bottom = [(0, 0, 0), (0, W, 0), (L, W, 0), (L, 0, 0)]
-        l1 = [(0, 0, 0), (L, 0, 0), (L, 0, T), (0, 0, T)]      # Y=0
-        l2 = [(0, W, 0), (0, W, T), (L, W, T), (L, W, 0)]      # Y=W
-        w1 = [(0, 0, 0), (0, 0, T), (0, W, T), (0, W, 0)]      # X=0
-        w2 = [(L, 0, 0), (L, W, 0), (L, W, T), (L, 0, T)]      # X=L
-        return {"top": top, "bottom": bottom, "l1": l1, "l2": l2, "w1": w1, "w2": w2}
-
-    def updateVisual(self, vobj):
-        if coin is None or self.root is None:
-            return
-        obj = vobj.Object
-        if obj is None:
-            return
-
-        self.root.removeAllChildren()
-
-        L = float(obj.Length)
-        W = float(obj.Width)
-        T = float(obj.Thickness)
-        if L <= 0 or W <= 0 or T <= 0:
-            return
-
-        quads = self._quads(L, W, T)
-
-        base_rgb = _to_rgb3(obj.BaseColor)
-        color_rgb = _to_rgb3(obj.Color)
-        missing_rgb = _to_rgb3(obj.MissingABSColor)
-
-        texture = _safe_path(obj.Texture)
-        abs_texture = _safe_path(obj.ABSTexture)
-
-        # Top (LxW): BaseColor
-        self.root.addChild(_make_face_sep(quads["top"], base_rgb, texture_path=""))
-
-        # Bottom (LxW): Color (or Texture) if ColorForBothSides
-        if bool(obj.ColorForBothSides):
-            self.root.addChild(_make_face_sep(quads["bottom"], color_rgb, texture_path=texture))
-        else:
-            self.root.addChild(_make_face_sep(quads["bottom"], missing_rgb, texture_path=""))
-
-        def add_side(face_key, abs_enabled: bool):
-            if abs_enabled:
-                if _file_exists(abs_texture):
-                    self.root.addChild(_make_face_sep(quads[face_key], color_rgb, texture_path=abs_texture))
-                else:
-                    self.root.addChild(_make_face_sep(quads[face_key], color_rgb, texture_path=""))
-            else:
-                self.root.addChild(_make_face_sep(quads[face_key], missing_rgb, texture_path=""))
-
-        # Side faces:
-        # L1/L2 are (Length x Thickness)
-        add_side("l1", bool(obj.ABSL1))
-        add_side("l2", bool(obj.ABSL2))
-        # W1/W2 are (Width x Thickness)
-        add_side("w1", bool(obj.ABSW1))
-        add_side("w2", bool(obj.ABSW2))
-
-    def __getstate__(self):
-        return None
-
-    def __setstate__(self, _state):
-        return None
-
+        pass
 
 def create_panel_feature(name="PanelFeature"):
     doc = App.ActiveDocument
