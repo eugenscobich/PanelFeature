@@ -41,7 +41,7 @@ def _set_texture(obj, texture_path):
     try:
         App.Console.PrintMessage(f"apply texture: {texture_path}\n")
 
-        #_set_color(obj, (1, 1, 1))
+        _set_color(obj, (1.0, 1.0, 1.0))
 
         rootnode = obj.ViewObject.RootNode
         tex =  coin.SoTexture2()
@@ -242,7 +242,7 @@ class PanelFeatureProxy:
         base_rgb = _rgb(obj.BaseColor)
         front_rgb = _rgb(obj.FrontColor)
         abs_rgb = _rgb(obj.ABSColor)
-
+        App.Console.PrintMessage(f"Base Color: {base_rgb}\n")
         _set_color(obj, base_rgb)
 
         # Front: texture if provided, else base color
