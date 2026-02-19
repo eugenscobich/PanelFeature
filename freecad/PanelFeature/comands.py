@@ -19,4 +19,4 @@ class CreatePanelFeatureCommand:
         return App.ActiveDocument is not None
 
     def Activated(self):
-        panel_feature.create_panel_feature(name="PanelFeature")
+        panel_feature.create_panel_feature(name="Panel")

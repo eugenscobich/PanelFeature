@@ -1,38 +1,104 @@
-import os
 import FreeCAD as App
 import FreeCADGui as Gui
 import Part
+from pivy import coin
 
+# -----------------------------
+# Helpers
+# -----------------------------
+def _rgb(c):
+    return (float(c[0]), float(c[1]), float(c[2]))
+
+def remove_child_part(parentObject, name):
+    for child in parentObject.Group:
+        if getattr(child, "Name", "") == name:
+            parentObject.removeObject(child)
+            return
+
+def get_or_create_child_part(doc, parentObject, name):
+    for child in parentObject.Group:
+        if getattr(child, "Name", "") == name:
+            return child
+    obj = doc.addObject("Part::Feature", name)
+    parentObject.addObject(obj)
+    return obj
+
+def _clear_texture(obj):
+    try:
+        root = obj.ViewObject.RootNode
+        i = 0
+        while i < root.getNumChildren():
+            node = root.getChild(i)
+            if isinstance(node, coin.SoTexture2):
+                root.removeChild(i)
+                continue  # don't increment index after removal
+            i += 1
+    except Exception as e:
+        App.Console.PrintError(f"clear texture failed: {e}\n")
+
+def _set_texture(obj, texture_path):
+    texture_path = (texture_path or "").strip()
+    try:
+        App.Console.PrintMessage(f"apply texture: {texture_path}\n")
+
+        #_set_color(obj, (1, 1, 1))
+
+        rootnode = obj.ViewObject.RootNode
+        tex =  coin.SoTexture2()
+        tex.filename = texture_path
+        rootnode.insertChild(tex, 1)
+    except Exception as e:
+        App.Console.PrintError(f"apply texture failed: {e}\n")
+        pass
+
+def _set_color(obj, rgb):
+    # For a single-face thin solid, ShapeColor is enough
+    try:
+        _clear_texture(obj)
+        obj.ViewObject.ShapeColor = rgb
+    except Exception:
+        pass
+
+# -----------------------------
+# Master FeaturePython
+# -----------------------------
 class PanelFeatureProxy:
-    def __init__(self, obj):
+    def __init__(self, obj, name):
         obj.Proxy = self
+        self.name = name
         self._init_properties(obj)
 
     def _init_properties(self, obj):
-        obj.addProperty("App::PropertyColor", "BaseColor", "Appearance", "Top face color (Length x Width).")
-        obj.addProperty("App::PropertyBool", "ColorForBothSides", "Appearance", "If true, bottom face uses Color/Texture too.")
-        obj.addProperty("App::PropertyColor", "Color", "Appearance", "Color used for 'colored' faces (or replaced by Texture).")
-        obj.addProperty("App::PropertyPath", "Texture", "Appearance", "Optional texture for 'colored' faces (view only).")
-        obj.BaseColor = (0.5, 0.5, 0.5)   # gray
-        obj.ColorForBothSides = True
-        obj.Color = (1.0, 1.0, 1.0)       # white
-        obj.Texture = ""
+        App.Console.PrintMessage(f"Init: {self.name}\n")
+        # Appearance
+        obj.addProperty("App::PropertyColor", "BaseColor", "Appearance", "Color of base material.")
+        obj.addProperty("App::PropertyColor", "FrontColor", "Appearance", "Color of front face.")
+        obj.addProperty("App::PropertyFile", "FrontTexture", "Appearance", "Optional texture for Front face (view only).")
+        obj.addProperty("App::PropertyBool", "BackAppearanceAsFront", "Appearance", "If true, Back face uses Front Appearance.")
 
-        obj.addProperty("App::PropertyBool", "ABSL1", "ABS", "ABS on L1 (Length x Thickness).")
-        obj.addProperty("App::PropertyBool", "ABSL2", "ABS", "ABS on L2 (Length x Thickness).")
-        obj.addProperty("App::PropertyBool", "ABSW1", "ABS", "ABS on W1 (Width x Thickness).")
-        obj.addProperty("App::PropertyBool", "ABSW2", "ABS", "ABS on W2 (Width x Thickness).")
-        obj.addProperty("App::PropertyLength", "ABSThickness", "ABS", "ABS thickness (informational).")
-        obj.addProperty("App::PropertyPath", "ABSTexture", "ABS", "Optional texture for ABS faces (view only).")
-        obj.addProperty("App::PropertyColor", "MissingABSColor", "ABS", "Color for side faces without ABS.")
-        obj.ABSL1 = True
-        obj.ABSL2 = True
-        obj.ABSW1 = True
-        obj.ABSW2 = True
-        obj.ABSThickness = App.Units.Quantity("0.5 mm")
+        obj.BaseColor = (0.588, 0.435, 0.2)
+        obj.FrontColor = (0.5, 0.5, 0.5)
+        obj.FrontTexture = ""
+        obj.BackAppearanceAsFront = True
+
+        # ABS
+        obj.addProperty("App::PropertyLength", "ABSThickness", "ABS", "ABS thickness.")
+        obj.addProperty("App::PropertyBool", "ABSL1Top", "ABS", "ABS on L1Top (Front Length x Thickness).")
+        obj.addProperty("App::PropertyBool", "ABSL2Bottom", "ABS", "ABS on L2Bottom (Back Length x Thickness).")
+        obj.addProperty("App::PropertyBool", "ABSW1Left", "ABS", "ABS on W1Left (Left Width x Thickness).")
+        obj.addProperty("App::PropertyBool", "ABSW2Right", "ABS", "ABS on W2Right (Right Width x Thickness).")
+        obj.addProperty("App::PropertyColor", "ABSColor", "ABS", "ABS Color.")
+        obj.addProperty("App::PropertyFile", "ABSTexture", "ABS", "Optional texture for ABS faces (view only).")
+
+        obj.ABSThickness = App.Units.Quantity("0.4 mm")
+        obj.ABSL1Top = True
+        obj.ABSL2Bottom = True
+        obj.ABSW1Left = True
+        obj.ABSW2Right = True
+        obj.ABSColor = obj.FrontColor
         obj.ABSTexture = ""
-        obj.MissingABSColor = (1.0, 0.0, 0.0)  # red
 
+        # Dimensions
         obj.addProperty("App::PropertyLength", "Length", "Dimensions", "Panel length (X).")
         obj.addProperty("App::PropertyLength", "Width", "Dimensions", "Panel width (Y).")
         obj.addProperty("App::PropertyLength", "Thickness", "Dimensions", "Panel thickness (Z).")
@@ -40,99 +106,181 @@ class PanelFeatureProxy:
         obj.Width = App.Units.Quantity("400 mm")
         obj.Thickness = App.Units.Quantity("18 mm")
 
-    def execute(self, obj):
-        L = float(obj.Length)
-        W = float(obj.Width)
-        T = float(obj.Thickness)
 
-        if L <= 0 or W <= 0 or T <= 0:
+    def execute(self, obj):
+        global l1_top, l2_bottom, w1_left, w2_right, back
+
+        App.Console.PrintMessage(f"Execute: {self.name}\n")
+        l = float(obj.Length)
+        w = float(obj.Width)
+        t = float(obj.Thickness)
+
+        abs_t = float(obj.ABSThickness)
+        abs_l1_top = bool(obj.ABSL1Top)
+        abs_l2_bottom = bool(obj.ABSL2Bottom)
+        abs_w1_left = bool(obj.ABSW1Left)
+        abs_w2_right = bool(obj.ABSW2Right)
+
+        App.Console.PrintMessage(f"ABS configuration: {abs_t}x{abs_l1_top}x{abs_l2_bottom}x{abs_w1_left}x{abs_w2_right}\n")
+
+        back_appearance_as_front = bool(obj.BackAppearanceAsFront)
+
+        if l <= 0 or w <= 0 or t <= 0 or abs_t <= 0:
+            App.Console.PrintMessage(f"Could not apply dimensions: {l}x{w}x{t}x{abs_t}\n")
             obj.Shape = Part.Shape()
             return
-        App.Console.PrintMessage(f"Making a box of dimension {L}x{W}x{T}\n")
-        obj.Shape = Part.makeBox(L, W, T)
+
+        doc = obj.Document
+
+        skin = 0.01 #mm
+
+        front = get_or_create_child_part(doc, obj.getParent(), f"{self.name}_Front")
+        back = get_or_create_child_part(doc, obj.getParent(), f"{self.name}_Back")
+        l1_top = get_or_create_child_part(doc, obj.getParent(), f"{self.name}_ABS_L1_Top")
+        l2_bottom = get_or_create_child_part(doc, obj.getParent(), f"{self.name}_ABS_L2_Bottom")
+        w1_left = get_or_create_child_part(doc, obj.getParent(), f"{self.name}_ABS_W1_Left")
+        w2_right = get_or_create_child_part(doc, obj.getParent(), f"{self.name}_ABS_W2_Right")
+
+        base_l = l
+        base_w = w
+        base_t = t - skin
+        base_x = 0
+        base_y = 0
+        base_z = 0
+        if abs_l1_top:
+            base_w -= abs_t
+        if abs_l2_bottom:
+            base_w -= abs_t
+            base_y += abs_t
+        if abs_w1_left:
+            base_l -= abs_t
+            base_x += abs_t
+        if abs_w2_right:
+            base_l -= abs_t
+        if back_appearance_as_front:
+            base_z += skin
+            base_t -= skin
+        App.Console.PrintMessage(f"Create base shape: {base_l}x{base_w}x{base_t}x{base_x}x{base_y}x{base_z}\n")
+        obj.Shape = Part.makeBox(base_l, base_w, base_t, App.Vector(base_x, base_y, base_z))
+
+        front_l = base_l
+        front_w = base_w
+        front_t = skin
+        front_x = base_x
+        front_y = base_y
+        front_z = base_z + base_t
+        front.Shape = Part.makeBox(front_l, front_w, front_t, App.Vector(front_x, front_y, front_z))
+        
+        if back_appearance_as_front:
+            back_l = base_l
+            back_w = base_w
+            back_t = skin
+            back_x = base_x
+            back_y = base_y
+            back_z = 0
+            back.Shape = Part.makeBox(back_l, back_w, back_t, App.Vector(back_x, back_y, back_z))
+            back.ViewObject.Visibility = True
+        else:
+            back.ViewObject.Visibility = False
+            back.Shape = Part.Shape()
+
+        if abs_l1_top:
+            l1_top_l = base_l
+            l1_top_w = abs_t
+            l1_top_t = base_z + base_t + skin
+            l1_top_x = base_x
+            l1_top_y = base_y + base_w
+            l1_top_z = 0
+            l1_top.Shape = Part.makeBox(l1_top_l, l1_top_w, l1_top_t, App.Vector(l1_top_x, l1_top_y, l1_top_z))
+            l1_top.ViewObject.Visibility = True
+        else:
+            l1_top.ViewObject.Visibility = False
+            l1_top.Shape = Part.Shape()
+
+        if abs_l2_bottom:
+            l2_bottom_l = base_l
+            l2_bottom_w = abs_t
+            l2_bottom_t = base_z + base_t + skin
+            l2_bottom_x = base_x
+            l2_bottom_y = 0
+            l2_bottom_z = 0
+            l2_bottom.Shape = Part.makeBox(l2_bottom_l, l2_bottom_w, l2_bottom_t, App.Vector(l2_bottom_x, l2_bottom_y, l2_bottom_z))
+            l2_bottom.ViewObject.Visibility = True
+        else:
+            l2_bottom.ViewObject.Visibility = False
+            l2_bottom.Shape = Part.Shape()
+
+        if abs_w1_left:
+            w1_left_l = abs_t
+            w1_left_w = base_y + base_w + (abs_t if abs_l1_top else 0)
+            w1_left_t = base_z + base_t + skin
+            w1_left_x = 0
+            w1_left_y = 0
+            w1_left_z = 0
+            w1_left.Shape = Part.makeBox(w1_left_l, w1_left_w, w1_left_t, App.Vector(w1_left_x, w1_left_y, w1_left_z))
+            w1_left.ViewObject.Visibility = True
+        else:
+            w1_left.ViewObject.Visibility = False
+            w1_left.Shape = Part.Shape()
+
+        if abs_w2_right:
+            w2_right_l = abs_t
+            w2_right_w = base_y + base_w + (abs_t if abs_l1_top else 0)
+            w2_right_t = base_z + base_t + skin
+            w2_right_x = base_x + base_l
+            w2_right_y = 0
+            w2_right_z = 0
+            w2_right.Shape = Part.makeBox(w2_right_l, w2_right_w, w2_right_t, App.Vector(w2_right_x, w2_right_y, w2_right_z))
+            w2_right.ViewObject.Visibility = True
+        else:
+            w2_right.ViewObject.Visibility = False
+            w2_right.Shape = Part.Shape()
+
+
+
+        # Appearance rules
+        base_rgb = _rgb(obj.BaseColor)
+        front_rgb = _rgb(obj.FrontColor)
+        abs_rgb = _rgb(obj.ABSColor)
+
+        _set_color(obj, base_rgb)
+
+        # Front: texture if provided, else base color
+        tex_front = (obj.FrontTexture or "").strip()
+        if tex_front:
+            _set_texture(front, tex_front)
+            if back_appearance_as_front:
+                _set_texture(back, tex_front)
+        else:
+            _set_color(front, front_rgb)
+            if back_appearance_as_front:
+                _set_color(back, front_rgb)
+
+        # Sides: ABS texture if provided AND that side has ABS; otherwise color
+        tex_abs = (obj.ABSTexture or "").strip()
+        App.Console.PrintMessage(f"ABS Texture: {tex_abs}\n")
+        if tex_abs:
+            if abs_l1_top:
+                _set_texture(l1_top, tex_abs)
+            if abs_l2_bottom:
+                _set_texture(l2_bottom, tex_abs)
+            if abs_w1_left:
+                _set_texture(w1_left, tex_abs)
+            if abs_w2_right:
+                _set_texture(w2_right, tex_abs)
+        else:
+            if abs_l1_top:
+                _set_color(l1_top, abs_rgb)
+            if abs_l2_bottom:
+                _set_color(l2_bottom, abs_rgb)
+            if abs_w1_left:
+                _set_color(w1_left, abs_rgb)
+            if abs_w2_right:
+                _set_color(w2_right, abs_rgb)
 
     def onChanged(self, obj, prop):
-        try:
-            if hasattr(obj, "State") and ("Restore" in obj.State):
-                return
-        except Exception:
-            pass
-
-        dims = {"Length", "Width", "Thickness"}
-        visuals = {
-            "BaseColor", "ColorForBothSides", "Color", "Texture",
-            "ABSL1", "ABSL2", "ABSW1", "ABSW2",
-            "ABSThickness", "ABSTexture", "MissingABSColor",
-        }
-
-        if prop in dims:
-            try:
-                obj.touch()
-                if obj.Document:
-                    obj.Document.recompute()
-            except Exception:
-                pass
-
-
-def _rgb(c):
-    """FreeCAD colors are often (r,g,b) or (r,g,b,a). Return (r,g,b)."""
-    return (float(c[0]), float(c[1]), float(c[2]))
-
-def apply_panel_face_colors(obj):
-    """
-    Colors faces based on obj.BaseColor / obj.Color / obj.MissingABSColor and ABS flags.
-    Uses face center-of-mass to map faces to Top/Bottom/L1/L2/W1/W2.
-    """
-    if not hasattr(obj, "ViewObject") or obj.ViewObject is None:
-        return
-    sh = getattr(obj, "Shape", None)
-    if sh is None or sh.isNull():
-        return
-    if len(sh.Faces) == 0:
-        return
-
-    # Pick your palette
-    base = _rgb(obj.BaseColor)                 # top (and optionally bottom)
-    generic = _rgb(obj.Color)                  # used for "ABS present" sides (example)
-    missing = _rgb(obj.MissingABSColor)        # used for "ABS missing" sides
-
-    # Build a per-face color list in Face order
-    face_colors = [generic] * len(sh.Faces)
-
-    # Collect face centers for classification
-    centers = []
-    for i, f in enumerate(sh.Faces):
-        c = f.CenterOfMass
-        centers.append((i, c.x, c.y, c.z))
-
-    # Identify faces by extreme center coordinates
-    top_i    = max(centers, key=lambda t: t[3])[0]
-    bottom_i = min(centers, key=lambda t: t[3])[0]
-    x_min_i  = min(centers, key=lambda t: t[1])[0]
-    x_max_i  = max(centers, key=lambda t: t[1])[0]
-    y_min_i  = min(centers, key=lambda t: t[2])[0]
-    y_max_i  = max(centers, key=lambda t: t[2])[0]
-
-    # Top / bottom
-    face_colors[top_i] = base
-    if bool(obj.ColorForBothSides):
-        face_colors[bottom_i] = base
-
-    # Side ABS logic (example mapping):
-    # - X sides correspond to "Length x Thickness": ABSL1 / ABSL2
-    # - Y sides correspond to "Width  x Thickness": ABSW1 / ABSW2
-    face_colors[x_min_i] = generic if bool(obj.ABSL1) else missing
-    face_colors[x_max_i] = generic if bool(obj.ABSL2) else missing
-    face_colors[y_min_i] = generic if bool(obj.ABSW1) else missing
-    face_colors[y_max_i] = generic if bool(obj.ABSW2) else missing
-
-    # Apply to the view provider
-    vobj = obj.ViewObject
-    vobj.DiffuseColor = face_colors
-
-    # Workaround: in some FreeCAD versions, FeaturePython may not refresh DiffuseColor
-    # until it is re-assigned to itself. :contentReference[oaicite:1]{index=1}
-    vobj.DiffuseColor = vobj.DiffuseColor
+        App.Console.PrintMessage(f"OnChange: {self.name}\n")
+        obj.Document.recompute()
 
 class ViewProviderPanelFeature:
     def __init__(self, vobj):
@@ -142,30 +290,26 @@ class ViewProviderPanelFeature:
         pass
 
     def updateData(self, obj, prop):
-        App.Console.PrintMessage("updateData\n")
-        if prop in (
-                "Shape",
-                "BaseColor", "ColorForBothSides", "Color",
-                "ABSL1", "ABSL2", "ABSW1", "ABSW2", "MissingABSColor",
-        ):
-            try:
-                apply_panel_face_colors(obj)
-            except Exception as e:
-                App.Console.PrintWarning(f"apply_panel_face_colors failed: {e}\n")
+        # Most updates handled in Proxy; keep minimal
+        pass
 
     def onChanged(self, vobj, prop):
         pass
 
-def create_panel_feature(name="PanelFeature"):
+
+def create_panel_feature(name="Panel"):
     doc = App.ActiveDocument
     if doc is None:
         doc = App.newDocument()
 
-    obj = doc.addObject("Part::FeaturePython", name)
-    PanelFeatureProxy(obj)
+    container = doc.addObject("App::Part", name)
+    basePart = doc.addObject("Part::FeaturePython", f"{container.Name}_Base")
+    container.addObject(basePart)
+
+    PanelFeatureProxy(basePart, container.Name)
 
     if Gui is not None:
-        ViewProviderPanelFeature(obj.ViewObject)
+        ViewProviderPanelFeature(basePart.ViewObject)
 
     doc.recompute()
-    return obj
+    return basePart
