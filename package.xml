@@ -32,7 +32,7 @@
 
     <!--[ Urls ]―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-->
     <url type='documentation'>https://github.com/eugenscobich/PanelFeature/tree/main/Documentation</url>
-    <url branch='Latest' type='repository'>https://github.com/eugenscobich/PanelFeature</url>
+    <url branch='main' type='repository'>https://github.com/eugenscobich/PanelFeature</url>
     <url type='bugtracker'>https://github.com/eugenscobich/PanelFeature/issues</url>
     <url type='readme'>https://github.com/eugenscobich/PanelFeature/blob/main/Resources/Documents/Overview.md</url>
 
