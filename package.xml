@@ -4,13 +4,9 @@
     <!--[ Versions ]―――――――――――――――――――――――――――――――――――――――――――――――――――――――――-->
     <freecadmin>1.0.2</freecadmin>
     <pythonmin>3.11</pythonmin>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
     <date>2025-12-24</date>
 
-    <!--[ Dependencies ]―――――――――――――――――――――――――――――――――――――――――――――――――――――-->
-    <depend version_gte='2.4.0' type='python'>numpy</depend>
-    <depend version_gte='0.6.70' type='addon'>Curves</depend>
-    <depend type='internal'>draft</depend>
 
     <!--[ Info ]―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-->
     <description>Addon that create Panel features.</description>
